@@ -202,3 +202,116 @@ class AlignDlib:
         thumbnail = cv2.warpAffine(rgbImg, H, (imgDim, imgDim))
         
         return thumbnail
+
+    def alignEye(self, imgDim, rgbImg, bb=None,
+              landmarks=None, landmarkIndices=INNER_EYES_AND_BOTTOM_LIP,
+              skipMulti=False, scale=1.0):
+        r"""align(imgDim, rgbImg, bb=None, landmarks=None, landmarkIndices=INNER_EYES_AND_BOTTOM_LIP)
+
+        Transform and align a face in an image.
+
+        :param imgDim: The edge length in pixels of the square the image is resized to.
+        :type imgDim: int
+        :param rgbImg: RGB image to process. Shape: (height, width, 3)
+        :type rgbImg: numpy.ndarray
+        :param bb: Bounding box around the face to align. \
+                   Defaults to the largest face.
+        :type bb: dlib.rectangle
+        :param landmarks: Detected landmark locations. \
+                          Landmarks found on `bb` if not provided.
+        :type landmarks: list of (x,y) tuples
+        :param landmarkIndices: The indices to transform to.
+        :type landmarkIndices: list of ints
+        :param skipMulti: Skip image if more than one face detected.
+        :type skipMulti: bool
+        :param scale: Scale image before cropping to the size given by imgDim.
+        :type scale: float
+        :return: The aligned RGB image. Shape: (imgDim, imgDim, 3)
+        :rtype: numpy.ndarray
+        """
+        assert imgDim is not None
+        assert rgbImg is not None
+        assert landmarkIndices is not None
+
+        if bb is None:
+            bb = self.getLargestFaceBoundingBox(rgbImg, skipMulti)
+            if bb is None:
+                return
+
+        if landmarks is None:
+            landmarks = self.findLandmarks(rgbImg, bb)
+
+        npLandmarks = np.float32(landmarks)
+        #npLandmarkIndices = np.array(landmarkIndices[0:2])
+        tplLandmarks = imgDim * MINMAX_TEMPLATE*scale + imgDim*(1-scale)/2
+        eyesCentor = (npLandmarks[landmarkIndices[0]] + npLandmarks[landmarkIndices[1]]) * 0.5
+        tplEyesCentor = (tplLandmarks[landmarkIndices[0]] + tplLandmarks[landmarkIndices[1]]) * 0.5
+        vec = npLandmarks[landmarkIndices[0]] - npLandmarks[landmarkIndices[1]]
+        tplVec = tplLandmarks[landmarkIndices[0]] - tplLandmarks[landmarkIndices[1]]
+        angle = 180.0 - np.math.atan2(vec[1],vec[0]) * 180.0 / np.math.pi
+        scale = np.sqrt(np.sum(tplVec*tplVec))/np.sqrt(np.sum(vec*vec))
+
+        #pylint: disable=maybe-no-member
+        H = cv2.getRotationMatrix2D(center = (eyesCentor[0], eyesCentor[1]), angle = -angle, scale = scale)
+        
+        distVec = tplEyesCentor - eyesCentor
+        H2 = np.array([(1.0, .0, distVec[0]), (.0, 1.0, distVec[1]), (.0, .0, 1.0)])
+
+        thumbnail = cv2.warpAffine(rgbImg, np.matmul(H, H2), (imgDim, imgDim))
+        #cv2.imshow("", thumbnail)
+        #cv2.waitKey()
+        return thumbnail
+
+
+    def alignEntire(self, imgDim, rgbImg, bb=None,
+              landmarks=None, landmarkIndices=INNER_EYES_AND_BOTTOM_LIP,
+              skipMulti=False, scale=1.0):
+        r"""align(imgDim, rgbImg, bb=None, landmarks=None, landmarkIndices=INNER_EYES_AND_BOTTOM_LIP)
+
+        Transform and align a face in an image.
+
+        :param imgDim: The edge length in pixels of the square the image is resized to.
+        :type imgDim: int
+        :param rgbImg: RGB image to process. Shape: (height, width, 3)
+        :type rgbImg: numpy.ndarray
+        :param bb: Bounding box around the face to align. \
+                   Defaults to the largest face.
+        :type bb: dlib.rectangle
+        :param landmarks: Detected landmark locations. \
+                          Landmarks found on `bb` if not provided.
+        :type landmarks: list of (x,y) tuples
+        :param landmarkIndices: The indices to transform to.
+        :type landmarkIndices: list of ints
+        :param skipMulti: Skip image if more than one face detected.
+        :type skipMulti: bool
+        :param scale: Scale image before cropping to the size given by imgDim.
+        :type scale: float
+        :return: The aligned RGB image. Shape: (imgDim, imgDim, 3)
+        :rtype: numpy.ndarray
+        """
+        assert imgDim is not None
+        assert rgbImg is not None
+        assert landmarkIndices is not None
+
+        if bb is None:
+            bb = self.getLargestFaceBoundingBox(rgbImg, skipMulti)
+            if bb is None:
+                return
+
+        if landmarks is None:
+            landmarks = self.findLandmarks(rgbImg, bb)
+
+        npLandmarks = np.float32(landmarks)
+        tplLandmarks = imgDim * MINMAX_TEMPLATE*scale + imgDim*(1-scale)/2
+        tplLandmarks = np.transpose(tplLandmarks)
+        npLandmarks = np.vstack( (np.transpose(npLandmarks), np.ones(tplLandmarks.shape[1])) )
+        #npLandmarkIndices = np.array(landmarkIndices)
+
+        #pylint: disable=maybe-no-member
+        #H = cv2.getAffineTransform(npLandmarks[npLandmarkIndices],
+        #                           imgDim * MINMAX_TEMPLATE[npLandmarkIndices]*scale + imgDim*(1-scale)/2)
+        H = np.matmul(np.matmul(tplLandmarks, np.transpose(npLandmarks)), 
+            np.linalg.inv(np.matmul(npLandmarks,np.transpose(npLandmarks))))
+        thumbnail = cv2.warpAffine(rgbImg, H, (imgDim, imgDim))
+        
+        return thumbnail
